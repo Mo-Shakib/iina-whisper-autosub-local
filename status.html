@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 18px 16px; font: 13px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+    h1 { margin: 0 0 15px; font-size: 17px; font-weight: 650; }
+    .card { border: 1px solid rgba(128, 128, 128, .28); border-radius: 12px; padding: 15px; background: rgba(128, 128, 128, .07); }
+    .heading { display: flex; align-items: center; gap: 9px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #8d8d92; flex: none; }
+    .dot.busy { background: #0a84ff; box-shadow: 0 0 0 3px rgba(10,132,255,.16); }
+    .dot.done { background: #30a46c; }
+    .dot.failed, .dot.cancelled { background: #e45a5a; }
+    .message { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+    .detail { margin: 7px 0 0 19px; opacity: .72; overflow-wrap: anywhere; }
+    .steps { display: flex; gap: 6px; margin: 16px 0 0; }
+    .step { height: 5px; flex: 1; border-radius: 10px; background: rgba(128,128,128,.25); }
+    .step.active { background: #0a84ff; }
+    .step.complete { background: #30a46c; }
+    .labels { display: flex; justify-content: space-between; margin-top: 5px; font-size: 10px; opacity: .6; }
+    .meta { margin: 17px 0; display: grid; gap: 9px; }
+    .meta-row { min-width: 0; }
+    .meta dt { margin-bottom: 2px; font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; opacity: .55; }
+    .meta dd { margin: 0; overflow-wrap: anywhere; user-select: text; }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    button { padding: 7px 8px; border: 1px solid rgba(128,128,128,.32); border-radius: 7px; background: rgba(128,128,128,.12); color: inherit; font: inherit; cursor: pointer; }
+    button:hover:not(:disabled) { background: rgba(128,128,128,.22); }
+    button:disabled { opacity: .45; cursor: default; }
+    #cancel { grid-column: 1 / -1; }
+    .note { margin: 12px 2px 0; font-size: 11px; opacity: .6; }
+  </style>
+</head>
+<body>
+  <h1>Whisper AutoSub</h1>
+  <section class="card" aria-live="polite">
+    <div class="heading"><span id="dot" class="dot"></span><span id="message" class="message">Ready to generate subtitles</span></div>
+    <p id="detail" class="detail">Open a local video, then start a run.</p>
+    <div class="steps" aria-hidden="true"><span id="step1" class="step"></span><span id="step2" class="step"></span><span id="step3" class="step"></span></div>
+    <div class="labels"><span>Extract</span><span>Transcribe</span><span>Ready</span></div>
+  </section>
+  <dl class="meta">
+    <div class="meta-row"><dt>Video</dt><dd id="video">—</dd></div>
+    <div class="meta-row"><dt>Elapsed</dt><dd id="elapsed">—</dd></div>
+    <div class="meta-row" id="output-row" hidden><dt>Subtitle file</dt><dd id="output"></dd></div>
+  </dl>
+  <div class="actions">
+    <button id="standard" type="button">Generate standard</button>
+    <button id="short" type="button">Generate short-form</button>
+    <button id="cancel" type="button" disabled>Cancel generation</button>
+  </div>
+  <p id="note" class="note" hidden>Whisper does not report an exact completion percentage. The stage and elapsed time update while it runs.</p>
+  <script>
+    let status = null;
+    const $ = id => document.getElementById(id);
+    function render() {
+      if (!status) return;
+      $('message').textContent = status.message || '';
+      $('detail').textContent = status.detail || '';
+      $('video').textContent = status.video ? status.video.split('/').pop() : '—';
+      $('video').title = status.video || '';
+      $('output-row').hidden = !status.output;
+      $('output').textContent = status.output || '';
+      const end = status.endedAt || Date.now();
+      $('elapsed').textContent = status.startedAt ? Math.max(0, Math.floor((end - status.startedAt) / 1000)) + ' s' : '—';
+      $('standard').disabled = !!status.busy;
+      $('short').disabled = !!status.busy;
+      $('cancel').disabled = !['extract', 'transcribe', 'cancelling'].includes(status.phase) || status.phase === 'cancelling';
+      $('note').hidden = !status.busy || status.phase === 'download';
+      $('dot').className = 'dot ' + (status.busy ? 'busy' : status.phase);
+      const phase = status.phase;
+      $('step1').className = 'step ' + (['transcribe','cancelling','done'].includes(phase) ? 'complete' : phase === 'extract' ? 'active' : '');
+      $('step2').className = 'step ' + (phase === 'done' ? 'complete' : ['transcribe','cancelling'].includes(phase) ? 'active' : '');
+      $('step3').className = 'step ' + (phase === 'done' ? 'complete' : '');
+    }
+    iina.onMessage('status', next => { status = next; render(); });
+    $('standard').addEventListener('click', () => iina.postMessage('generate-standard'));
+    $('short').addEventListener('click', () => iina.postMessage('generate-short'));
+    $('cancel').addEventListener('click', () => iina.postMessage('cancel'));
+    setInterval(render, 1000);
+    iina.postMessage('ready');
+  </script>
+</body>
+</html>

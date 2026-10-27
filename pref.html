@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 20px; font: -apple-system-body; line-height: 1.4; }
+    h2 { margin: 0 0 16px; font-size: 17px; }
+    .field { margin: 0 0 15px; }
+    .field > label { display: block; margin-bottom: 4px; font-weight: 600; }
+    input[type="text"], input[type="number"] { box-sizing: border-box; width: 100%; padding: 6px 8px; }
+    input[type="number"] { max-width: 100px; }
+    .check { display: flex; gap: 7px; align-items: start; margin: 12px 0; }
+    .check input { margin-top: 3px; }
+    .help { margin: 4px 0 0; font-size: 11px; opacity: .68; }
+    .group { padding-top: 12px; border-top: 1px solid rgba(128,128,128,.3); }
+  </style>
+</head>
+<body>
+  <h2>Whisper AutoSub (Local)</h2>
+  <div class="field"><label for="ffmpeg">FFmpeg executable</label><input id="ffmpeg" type="text" data-pref-key="ffmpegPath" spellcheck="false"></div>
+  <div class="field"><label for="whisper">Whisper executable</label><input id="whisper" type="text" data-pref-key="whisperPath" spellcheck="false"></div>
+  <div class="field"><label for="model">Whisper model</label><input id="model" type="text" data-pref-key="modelPath" spellcheck="false"><p class="help">Use the Plugin menu to download ggml-base.en.bin into the plugin data folder.</p></div>
+  <div class="group">
+    <div class="field"><label for="length">Standard subtitle line length</label><input id="length" type="number" min="1" max="200" step="1" data-type="int" data-pref-key="maxLineLength"><p class="help">Option+Shift+S always uses 15 characters.</p></div>
+    <div class="field"><label for="prompt">Whisper prompt</label><input id="prompt" type="text" data-pref-key="customPrompt"></div>
+    <label class="check"><input type="checkbox" data-pref-key="saveNextToVideo" data-type="bool"><span>Save the finished .srt next to the video</span></label>
+    <p class="help">When off, finished subtitles are saved in the plugin data folder so they remain available to IINA. Temporary audio and other generated files are always removed.</p>
+    <label class="check"><input type="checkbox" data-pref-key="enableDtw" data-type="bool"><span>Use word alignment (DTW), with automatic fallback</span></label>
+  </div>
+</body>
+</html>

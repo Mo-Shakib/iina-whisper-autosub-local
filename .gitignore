@@ -1,0 +1,8 @@
+.DS_Store
+*.iinaplgz
+*.bin
+*.srt
+*.wav
+*.json.part
+node_modules/
+iina_whisper_autosub_plugin_spec_guide.md

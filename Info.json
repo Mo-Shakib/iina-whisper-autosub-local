@@ -1,0 +1,22 @@
+{
+  "name": "Whisper AutoSub (Local)",
+  "identifier": "io.bento.iina-whisper-autosub",
+  "version": "1.1.1",
+  "description": "Generate and load English subtitles locally with whisper.cpp and FFmpeg.",
+  "author": { "name": "Shakib" },
+  "ghRepo": "Mo-Shakib/iina-whisper-autosub-local",
+  "ghVersion": 1,
+  "entry": "main.js",
+  "preferencesPage": "pref.html",
+  "sidebarTab": { "name": "AutoSub" },
+  "preferenceDefaults": {
+    "ffmpegPath": "/opt/homebrew/bin/ffmpeg",
+    "whisperPath": "/opt/homebrew/bin/whisper-cli",
+    "modelPath": "~/subtitle-cli/ggml-base.en.bin",
+    "maxLineLength": "42",
+    "customPrompt": "Use proper capitalization and punctuation.",
+    "saveNextToVideo": true,
+    "enableDtw": true
+  },
+  "permissions": ["file-system", "show-osd", "show-alert"]
+}
