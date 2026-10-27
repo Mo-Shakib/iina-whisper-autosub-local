@@ -5,9 +5,9 @@ Generate English `.srt` subtitles for the local video playing in IINA with FFmpe
 ## Setup
 
 1. Install the tools: `brew install ffmpeg whisper-cpp`.
-2. Put `ggml-base.en.bin` at `~/subtitle-cli/ggml-base.en.bin`, or use the plugin menu's **Download ggml-base.en.bin** action after installation.
-3. In **IINA → Settings → Plugins**, choose **Install from GitHub** and enter `Mo-Shakib/iina-whisper-autosub-local`. You can also open the `.iinaplgz` file from the latest GitHub release in IINA.
-4. Enable **Whisper AutoSub (Local)**. Edit the executable and model paths in its Preferences if needed.
+2. In **IINA → Settings → Plugins**, choose **Install from GitHub** and enter `Mo-Shakib/iina-whisper-autosub-local`. You can also open the `.iinaplgz` file from the latest GitHub release in IINA.
+3. Enable **Whisper AutoSub (Local)**. Edit the FFmpeg or Whisper executable path in Preferences if needed.
+4. Open a local video and generate subtitles. AutoSub checks for an existing Base English model, verifies it, and offers a one-time download (about 142 MiB) if none is ready. You can still set a custom model path in Preferences.
 
 For development from this source folder, run `./install-dev.sh` and restart IINA. Remove that development symlink before testing a GitHub installation of the same plugin.
 
@@ -17,7 +17,7 @@ The **AutoSub** tab in IINA's sidebar shows the current stage, elapsed time, the
 
 The completed `.srt` is saved beside the video by default. If that setting is off, it is saved in the plugin's persistent data folder. Each run uses a private temporary folder for audio and Whisper output; it is removed on success, error, or cancellation. The runner also stops when its IINA parent process exits. A forcibly killed runner cannot execute its cleanup trap; leftover temporary files from that rare case can be removed from the plugin's `@tmp` folder.
 
-The model download uses the network once. Subtitle generation itself runs locally.
+The model download uses the network once. AutoSub verifies the model against the checksum published by whisper.cpp before using it. Subtitle generation itself runs locally.
 
 ## Release
 

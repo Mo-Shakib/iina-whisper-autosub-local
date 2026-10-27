@@ -67,7 +67,7 @@
       $('standard').disabled = !!status.busy;
       $('short').disabled = !!status.busy;
       $('cancel').disabled = !['extract', 'transcribe', 'cancelling'].includes(status.phase) || status.phase === 'cancelling';
-      $('note').hidden = !status.busy || status.phase === 'download';
+      $('note').hidden = !['extract', 'transcribe', 'cancelling'].includes(status.phase);
       $('dot').className = 'dot ' + (status.busy ? 'busy' : status.phase);
       const phase = status.phase;
       $('step1').className = 'step ' + (['transcribe','cancelling','done'].includes(phase) ? 'complete' : phase === 'extract' ? 'active' : '');

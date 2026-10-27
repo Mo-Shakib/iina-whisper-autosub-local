@@ -21,6 +21,7 @@ test('the sidebar receives extraction, transcription, and completion status', as
     utils: {
       resolvePath(value) { return value; }, fileInPath() { return true; },
       async exec(command, args, cwd, stdoutHook) {
+        if (command === '/usr/bin/shasum') return { status: 0, stdout: '137c40403d78fd54d454da0f9bd998f78703390c  ' + args[2], stderr: '' };
         stdoutHook('AUTOSUB_STAGE:transcribe\n');
         return { status: 0, stdout: '', stderr: '' };
       },
@@ -45,7 +46,7 @@ test('the sidebar receives extraction, transcription, and completion status', as
   assert.equal(messages.at(-1).data.phase, 'idle');
   actions['Generate Subtitles (Standard)']();
   await new Promise(resolve => setTimeout(resolve, 0));
-  assert.deepEqual(messages.filter(item => item.name === 'status').map(item => item.data.phase), ['idle', 'extract', 'transcribe', 'done']);
+  assert.deepEqual(messages.filter(item => item.name === 'status').map(item => item.data.phase), ['idle', 'model', 'extract', 'transcribe', 'done']);
   assert.deepEqual(loadedTracks, ['/video.srt']);
   sidebarHandlers.ready();
   assert.equal(messages.at(-1).data.phase, 'done');

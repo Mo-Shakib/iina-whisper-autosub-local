@@ -3,6 +3,9 @@ const { core, mpv, utils, menu, file, preferences, console: logger, event, sideb
 
 let activeRun = null;
 let downloadingModel = false;
+let preparingModel = false;
+const MODEL_SHA1 = "137c40403d78fd54d454da0f9bd998f78703390c";
+const MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
 let currentStatus = {
   phase: "idle",
   message: "Ready to generate subtitles",
@@ -163,6 +166,72 @@ function maxLength(value) {
   return String(number);
 }
 
+async function isValidModel(path) {
+  if (!path || !file.exists(path)) return false;
+  try {
+    const result = await utils.exec("/usr/bin/shasum", ["-a", "1", path]);
+    const match = result.stdout && result.stdout.match(/^([0-9a-f]{40})\s/);
+    return result.status === 0 && !!match && match[1] === MODEL_SHA1;
+  } catch (error) {
+    logger.warn("Could not check Whisper model: " + error);
+    return false;
+  }
+}
+
+async function findExistingModel() {
+  const candidates = [
+    preferences.get("modelPath"),
+    "@data/ggml-base.en.bin",
+    "~/subtitle-cli/ggml-base.en.bin",
+    "~/whisper.cpp/models/ggml-base.en.bin",
+    "~/Downloads/ggml-base.en.bin",
+  ];
+  const checked = {};
+  for (const candidate of candidates) {
+    const path = resolveUserPath(candidate);
+    if (!path || checked[path]) continue;
+    checked[path] = true;
+    if (await isValidModel(path)) {
+      if (preferences.get("modelPath") !== path) {
+        preferences.set("modelPath", path);
+        preferences.sync();
+      }
+      return path;
+    }
+  }
+  return null;
+}
+
+async function downloadModelFile() {
+  const target = resolveUserPath("@data/ggml-base.en.bin");
+  const partial = target + ".part." + Date.now() + "-" + Math.random().toString(36).slice(2);
+  let lastPercent = -1;
+  const onProgress = chunk => {
+    const percentages = String(chunk).match(/\d+(?:\.\d+)?%/g);
+    if (!percentages) return;
+    const percent = Math.floor(Number(percentages[percentages.length - 1].slice(0, -1)));
+    if (percent >= lastPercent + 5 || percent === 100) {
+      lastPercent = percent;
+      updateStatus({ phase: "download", message: "Downloading Whisper model", detail: "Whisper Base English (142 MiB): " + percent + "%" });
+    }
+  };
+  try {
+    updateStatus({ phase: "download", message: "Downloading Whisper model", detail: "Whisper Base English (142 MiB)." });
+    core.osd("Downloading Whisper Base English model…");
+    const result = await utils.exec("/usr/bin/curl", ["--fail", "--location", "--retry", "2", "--progress-bar", "--output", partial, MODEL_URL], undefined, undefined, onProgress);
+    if (result.status !== 0 || !file.exists(partial)) throw new Error("Model download failed. Check your connection and try again.");
+    updateStatus({ phase: "download", message: "Verifying Whisper model", detail: "Checking the downloaded file before use." });
+    if (!(await isValidModel(partial))) throw new Error("Downloaded model failed verification. Please try again.");
+    const moved = await utils.exec("/bin/mv", ["-f", partial, target]);
+    if (moved.status !== 0) throw new Error("Could not save the downloaded model.");
+    preferences.set("modelPath", target);
+    preferences.sync();
+    return target;
+  } finally {
+    if (file.exists(partial)) file.delete(partial);
+  }
+}
+
 function reportError(error, label) {
   const message = error && error.message ? error.message : String(error);
   logger.error(message);
@@ -171,7 +240,7 @@ function reportError(error, label) {
 }
 
 async function generate(shortForm) {
-  if (activeRun || downloadingModel) {
+  if (activeRun || downloadingModel || preparingModel) {
     showStatusPanel();
     core.osd("Whisper AutoSub is already busy.");
     return;
@@ -184,12 +253,20 @@ async function generate(shortForm) {
     return;
   }
 
+  preparingModel = true;
   try {
     const ffmpeg = binaryFor("ffmpegPath", "ffmpeg");
     const whisper = binaryFor("whisperPath", "whisper-cli");
-    const model = resolveUserPath(preferences.get("modelPath"));
-    if (!model || !file.exists(model)) {
-      throw new Error("Whisper model not found. Set its path in Preferences or download it from the Plugin menu.");
+    showStatusPanel();
+    updateStatus({ phase: "model", message: "Checking Whisper model", detail: "Looking for a verified Base English model.", video, output: "", startedAt: Date.now(), endedAt: null, busy: true });
+    let model = await findExistingModel();
+    if (!model) {
+      const accepted = utils.ask("Whisper Base English (142 MiB) was not found or could not be verified. Download it to the plugin data folder now?");
+      if (!accepted) {
+        updateStatus({ phase: "idle", message: "Whisper model needed", detail: "Set a valid model path in Preferences or use the Plugin menu to download it.", busy: false, endedAt: Date.now() });
+        return;
+      }
+      model = await downloadModelFile();
     }
     const length = shortForm ? "15" : maxLength(preferences.get("maxLineLength") || "42");
     const token = String(Date.now()) + "-" + Math.random().toString(36).slice(2);
@@ -198,6 +275,7 @@ async function generate(shortForm) {
     const output = subtitleDestination(video, token);
     const run = { cancel, cancelled: false, video };
     activeRun = run;
+    preparingModel = false;
     showStatusPanel();
     updateStatus({ phase: "extract", message: "Extracting audio", detail: "Converting the video's audio to 16 kHz mono.", video, output: "", startedAt: Date.now(), endedAt: null, busy: true });
     core.osd("[1/2] Extracting 16 kHz audio…");
@@ -248,6 +326,8 @@ async function generate(shortForm) {
     }
   } catch (error) {
     reportError(error);
+  } finally {
+    preparingModel = false;
   }
 }
 
@@ -270,29 +350,26 @@ function cancelGeneration() {
 }
 
 async function downloadModel() {
-  if (activeRun || downloadingModel) {
+  if (activeRun || downloadingModel || preparingModel) {
     core.osd("Whisper AutoSub is already busy.");
     return;
   }
   downloadingModel = true;
-  const target = resolveUserPath("@data/ggml-base.en.bin");
-  const partial = target + ".part";
   try {
     showStatusPanel();
-    updateStatus({ phase: "download", message: "Downloading Whisper model", detail: "The model is saved in the plugin data folder.", video: "", output: "", startedAt: Date.now(), endedAt: null, busy: true });
-    core.osd("Downloading Whisper Base English model…");
-    const result = await utils.exec("/usr/bin/curl", ["--fail", "--location", "--retry", "2", "--output", partial, "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"]);
-    if (result.status !== 0 || !file.exists(partial)) throw new Error("Model download failed: " + (result.stderr || "curl error"));
-    const moved = await utils.exec("/bin/mv", ["-f", partial, target]);
-    if (moved.status !== 0) throw new Error("Could not save the downloaded model.");
-    preferences.set("modelPath", target);
-    preferences.sync();
-    core.osd("Whisper model downloaded.");
-    updateStatus({ phase: "done", message: "Model downloaded", detail: "You can now generate subtitles.", busy: false, endedAt: Date.now() });
+    updateStatus({ phase: "model", message: "Checking Whisper model", detail: "Looking for a verified Base English model.", video: "", output: "", startedAt: Date.now(), endedAt: null, busy: true });
+    const existing = await findExistingModel();
+    if (existing) {
+      core.osd("Whisper model is ready.");
+      updateStatus({ phase: "done", message: "Model ready", detail: "Using " + existing, busy: false, endedAt: Date.now() });
+    } else {
+      await downloadModelFile();
+      core.osd("Whisper model downloaded.");
+      updateStatus({ phase: "done", message: "Model downloaded", detail: "You can now generate subtitles.", busy: false, endedAt: Date.now() });
+    }
   } catch (error) {
     reportError(error, "Model download failed");
   } finally {
-    if (file.exists(partial)) file.delete(partial);
     downloadingModel = false;
   }
 }

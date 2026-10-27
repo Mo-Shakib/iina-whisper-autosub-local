@@ -21,7 +21,7 @@
   <h2>Whisper AutoSub (Local)</h2>
   <div class="field"><label for="ffmpeg">FFmpeg executable</label><input id="ffmpeg" type="text" data-pref-key="ffmpegPath" spellcheck="false"></div>
   <div class="field"><label for="whisper">Whisper executable</label><input id="whisper" type="text" data-pref-key="whisperPath" spellcheck="false"></div>
-  <div class="field"><label for="model">Whisper model</label><input id="model" type="text" data-pref-key="modelPath" spellcheck="false"><p class="help">Use the Plugin menu to download ggml-base.en.bin into the plugin data folder.</p></div>
+  <div class="field"><label for="model">Whisper Base English model</label><input id="model" type="text" data-pref-key="modelPath" spellcheck="false"><p class="help">AutoSub finds an existing verified model or offers a one-time download on the first run. Set a custom path here if you keep the model elsewhere.</p></div>
   <div class="group">
     <div class="field"><label for="length">Standard subtitle line length</label><input id="length" type="number" min="1" max="200" step="1" data-type="int" data-pref-key="maxLineLength"><p class="help">Option+Shift+S always uses 15 characters.</p></div>
     <div class="field"><label for="prompt">Whisper prompt</label><input id="prompt" type="text" data-pref-key="customPrompt"></div>
