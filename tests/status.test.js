@@ -10,6 +10,8 @@ test('the sidebar receives extraction, transcription, and completion status', as
   const eventHandlers = {};
   const actions = {};
   const loadedTracks = [];
+  const overlayCalls = [];
+  let runStatus = 0;
   const values = {
     ffmpegPath: '/opt/homebrew/bin/ffmpeg', whisperPath: '/opt/homebrew/bin/whisper-cli',
     modelPath: '/model.bin', maxLineLength: 42, customPrompt: '',
@@ -20,10 +22,14 @@ test('the sidebar receives extraction, transcription, and completion status', as
     mpv: { getString() { return '/video.mp4'; } },
     utils: {
       resolvePath(value) { return value; }, fileInPath() { return true; },
-      async exec(command, args, cwd, stdoutHook) {
+      async exec(command, args, cwd, stdoutHook, stderrHook) {
         if (command === '/usr/bin/shasum') return { status: 0, stdout: '137c40403d78fd54d454da0f9bd998f78703390c  ' + args[2], stderr: '' };
+        assert.equal(command, '/bin/bash');
+        assert.match(args[1], /-sow -pp --prompt/);
         stdoutHook('AUTOSUB_STAGE:transcribe\n');
-        return { status: 0, stdout: '', stderr: '' };
+        stderrHook('whisper_print_progress_callback: progress =  2');
+        stderrHook('5%\nwhisper_print_progress_callback: progress =  50%\n');
+        return { status: runStatus, stdout: '', stderr: runStatus ? 'Whisper failed' : '' };
       },
     },
     menu: { item(title, action) { actions[title] = action; return {}; }, separator() { return {}; }, addItem() {} },
@@ -36,6 +42,14 @@ test('the sidebar receives extraction, transcription, and completion status', as
       postMessage(name, data) { messages.push({ name, data }); },
       show() {},
     },
+    overlay: {
+      simpleMode() { overlayCalls.push(['simpleMode']); },
+      setStyle(style) { overlayCalls.push(['setStyle', style]); },
+      setClickable(value) { overlayCalls.push(['setClickable', value]); },
+      setContent(content) { overlayCalls.push(['setContent', content]); },
+      show() { overlayCalls.push(['show']); },
+      hide() { overlayCalls.push(['hide']); },
+    },
   };
   const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
   vm.runInNewContext(source, { iina, setTimeout, clearTimeout });
@@ -46,10 +60,26 @@ test('the sidebar receives extraction, transcription, and completion status', as
   assert.equal(messages.at(-1).data.phase, 'idle');
   actions['Generate Subtitles (Standard)']();
   await new Promise(resolve => setTimeout(resolve, 0));
-  assert.deepEqual(messages.filter(item => item.name === 'status').map(item => item.data.phase), ['idle', 'model', 'extract', 'transcribe', 'done']);
+  assert.deepEqual(messages.filter(item => item.name === 'status').map(item => item.data.phase), ['idle', 'model', 'extract', 'transcribe', 'transcribe', 'transcribe', 'done']);
+  assert.deepEqual(messages.filter(item => item.data.phase === 'transcribe').map(item => item.data.progress), [0, 25, 50]);
+  assert.deepEqual(overlayCalls.filter(call => call[0] === 'setContent').map(call => call[1]), [
+    '<span class="subtitle-progress">Subtitle is generating - 0%</span>',
+    '<span class="subtitle-progress">Subtitle is generating - 0%</span>',
+    '<span class="subtitle-progress">Subtitle is generating - 25%</span>',
+    '<span class="subtitle-progress">Subtitle is generating - 50%</span>',
+  ]);
+  assert.equal(overlayCalls.filter(call => call[0] === 'show').length, 1);
+  assert.equal(overlayCalls.at(-1)[0], 'hide');
   assert.deepEqual(loadedTracks, ['/video.srt']);
   sidebarHandlers.ready();
   assert.equal(messages.at(-1).data.phase, 'done');
+  runStatus = 1;
+  actions['Generate Subtitles (Standard)']();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(messages.at(-1).data.phase, 'failed');
+  assert.equal(overlayCalls.filter(call => call[0] === 'show').length, 2);
+  assert.equal(overlayCalls.filter(call => call[0] === 'hide').length, 2);
+  assert.deepEqual(loadedTracks, ['/video.srt']);
 });
 
 test('the sidebar page script parses', () => {

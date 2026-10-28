@@ -29,7 +29,6 @@
     button:hover:not(:disabled) { background: rgba(128,128,128,.22); }
     button:disabled { opacity: .45; cursor: default; }
     #cancel { grid-column: 1 / -1; }
-    .note { margin: 12px 2px 0; font-size: 11px; opacity: .6; }
   </style>
 </head>
 <body>
@@ -50,7 +49,6 @@
     <button id="short" type="button">Generate short-form</button>
     <button id="cancel" type="button" disabled>Cancel generation</button>
   </div>
-  <p id="note" class="note" hidden>Whisper does not report an exact completion percentage. The stage and elapsed time update while it runs.</p>
   <script>
     let status = null;
     const $ = id => document.getElementById(id);
@@ -67,7 +65,6 @@
       $('standard').disabled = !!status.busy;
       $('short').disabled = !!status.busy;
       $('cancel').disabled = !['extract', 'transcribe', 'cancelling'].includes(status.phase) || status.phase === 'cancelling';
-      $('note').hidden = !['extract', 'transcribe', 'cancelling'].includes(status.phase);
       $('dot').className = 'dot ' + (status.busy ? 'busy' : status.phase);
       const phase = status.phase;
       $('step1').className = 'step ' + (['transcribe','cancelling','done'].includes(phase) ? 'complete' : phase === 'extract' ? 'active' : '');

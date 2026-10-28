@@ -1,9 +1,11 @@
 // IINA's main entry runs in JavaScriptCore, not Node.js.
-const { core, mpv, utils, menu, file, preferences, console: logger, event, sidebar } = iina;
+const { core, mpv, utils, menu, file, preferences, console: logger, event, sidebar, overlay } = iina;
 
 let activeRun = null;
 let downloadingModel = false;
 let preparingModel = false;
+let progressOverlayReady = false;
+let progressOverlayVisible = false;
 const MODEL_SHA1 = "137c40403d78fd54d454da0f9bd998f78703390c";
 const MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
 let currentStatus = {
@@ -15,10 +17,35 @@ let currentStatus = {
   startedAt: null,
   endedAt: null,
   busy: false,
+  progress: null,
 };
+
+function syncProgressOverlay() {
+  if (!overlay) return;
+  const visible = currentStatus.busy && ['extract', 'transcribe'].includes(currentStatus.phase);
+  try {
+    if (!visible) {
+      if (progressOverlayVisible) overlay.hide();
+      progressOverlayVisible = false;
+      return;
+    }
+    if (!progressOverlayReady) {
+      overlay.simpleMode();
+      overlay.setStyle('html, body, .content { width: 100%; height: 100%; margin: 0; background: transparent; } .content { box-sizing: border-box; display: flex; align-items: flex-end; justify-content: center; padding: 0 20px 7%; } .subtitle-progress { color: white; font: 600 clamp(18px, 2.5vw, 30px)/1.25 -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; text-shadow: 0 2px 4px black, 0 0 8px black; }');
+      overlay.setClickable(false);
+      progressOverlayReady = true;
+    }
+    overlay.setContent('<span class="subtitle-progress">Subtitle is generating - ' + currentStatus.progress + '%</span>');
+    if (!progressOverlayVisible) overlay.show();
+    progressOverlayVisible = true;
+  } catch (error) {
+    logger.warn('AutoSub progress overlay update failed: ' + error);
+  }
+}
 
 function updateStatus(changes) {
   currentStatus = Object.assign({}, currentStatus, changes);
+  syncProgressOverlay();
   try { sidebar.postMessage("status", currentStatus); }
   catch (error) { logger.warn("AutoSub status panel update failed: " + error); }
 }
@@ -97,7 +124,7 @@ if ! run_step "$ffmpeg" -nostdin -y -loglevel error -i "$video" -ar 16000 -ac 1 
 fi
 check_cancel
 echo 'AUTOSUB_STAGE:transcribe'
-args=(-m "$model" -f "$work/audio.wav" -osrt -of "$work/caption" -ml "$max_len" -sow --prompt "$prompt")
+args=(-m "$model" -f "$work/audio.wav" -osrt -of "$work/caption" -ml "$max_len" -sow -pp --prompt "$prompt")
 if [[ "$dtw" == true ]]; then
   if ! run_step "$whisper" "\${args[@]}" -dtw base.en; then
     check_cancel
@@ -277,14 +304,14 @@ async function generate(shortForm) {
     activeRun = run;
     preparingModel = false;
     showStatusPanel();
-    updateStatus({ phase: "extract", message: "Extracting audio", detail: "Converting the video's audio to 16 kHz mono.", video, output: "", startedAt: Date.now(), endedAt: null, busy: true });
+    updateStatus({ phase: "extract", message: "Extracting audio", detail: "Converting the video's audio to 16 kHz mono.", video, output: "", startedAt: Date.now(), endedAt: null, busy: true, progress: 0 });
     core.osd("[1/2] Extracting 16 kHz audio…");
     let stageBuffer = "";
     const onOutput = chunk => {
       stageBuffer += chunk;
       if (stageBuffer.indexOf("AUTOSUB_STAGE:transcribe") !== -1) {
         core.osd("[2/2] Transcribing with Whisper…");
-        updateStatus({ phase: "transcribe", message: "Transcribing with Whisper", detail: "This may take a while for a long video." });
+        updateStatus({ phase: "transcribe", message: "Transcribing with Whisper", detail: "Whisper transcription: 0% complete.", progress: 0 });
         stageBuffer = "";
       } else if (stageBuffer.length > 100) {
         stageBuffer = stageBuffer.slice(-40);
@@ -292,13 +319,24 @@ async function generate(shortForm) {
     };
     let errorBuffer = "";
     const onErrorOutput = chunk => {
-      errorBuffer += chunk;
-      if (errorBuffer.indexOf("DTW failed; retrying without word alignment.") !== -1) {
-        updateStatus({ phase: "transcribe", message: "Retrying transcription", detail: "Word alignment failed; continuing without it." });
-        errorBuffer = "";
-      } else if (errorBuffer.length > 200) {
-        errorBuffer = errorBuffer.slice(-100);
+      errorBuffer += String(chunk);
+      let newline;
+      while ((newline = errorBuffer.indexOf("\n")) !== -1) {
+        const line = errorBuffer.slice(0, newline).trim();
+        errorBuffer = errorBuffer.slice(newline + 1);
+        if (line.includes("DTW failed; retrying without word alignment.")) {
+          updateStatus({ phase: "transcribe", message: "Retrying transcription", detail: "Word alignment failed; continuing without it.", progress: 0 });
+          continue;
+        }
+        const match = line.match(/whisper_print_progress_callback:\s*progress\s*=\s*(\d{1,3})%/);
+        if (match && currentStatus.phase === "transcribe") {
+          const progress = Math.min(100, Number(match[1]));
+          if (progress > currentStatus.progress) {
+            updateStatus({ progress, detail: "Whisper transcription: " + progress + "% complete." });
+          }
+        }
       }
+      if (errorBuffer.length > 512) errorBuffer = errorBuffer.slice(-256);
     };
     try {
       const result = await utils.exec("/bin/bash", ["-c", RUNNER, "autosub", ffmpeg, whisper, model, video, output, length, String(preferences.get("customPrompt") || ""), preferences.get("enableDtw") === false ? "false" : "true", tmpRoot, token], undefined, onOutput, onErrorOutput);
