@@ -1,11 +1,11 @@
 {
   "name": "Whisper AutoSub (Local)",
   "identifier": "io.bento.iina-whisper-autosub",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Generate and load English subtitles locally with whisper.cpp and FFmpeg.",
   "author": { "name": "Shakib" },
   "ghRepo": "Mo-Shakib/iina-whisper-autosub-local",
-  "ghVersion": 2,
+  "ghVersion": 3,
   "entry": "main.js",
   "preferencesPage": "pref.html",
   "sidebarTab": { "name": "AutoSub" },
